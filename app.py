@@ -13,18 +13,38 @@ st.markdown("""
     <style>
     .main-title { font-size: 2.1rem; font-weight: 700; color: #0F172A; }
     .sub-title { font-size: 1rem; color: #64748B; margin-bottom: 1.5rem; }
-    .metric-card { background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 1rem; border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">⚡ DocAudit AI: Grounding & Governança de LLMs</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Protótipo funcional de auditoria factual, mitigação de alucinações e telemetria de tokens ("Tokens são dinheiro").</div>', unsafe_allow_html=True)
 
-# Barra Lateral - Governança e Custos
+# Barra Lateral - Governança e Configurações
 with st.sidebar:
     st.header("⚙️ Configurações & Custos")
-    api_key = st.text_input("Gemini API Key:", type="password", help="Obtenha gratuitamente em aistudio.google.com")
-    modelo_escolhido = st.selectbox("Modelo:", ["gemini-1.5-flash", "gemini-1.5-pro"])
+    api_key = st.text_input("Gemini API Key:", type="password", help="Chave gratuita em aistudio.google.com")
+
+    modelos_disponiveis = ["gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-pro"]
+    
+    # Detecção dinâmica dos modelos liberados para a chave informada
+    if api_key.strip():
+        try:
+            genai.configure(api_key=api_key.strip())
+            models_list = [
+                m.name.replace("models/", "")
+                for m in genai.list_models()
+                if "generateContent" in m.supported_generation_methods
+            ]
+            if models_list:
+                # Prioriza os modelos Flash e Pro mais recentes no topo da lista
+                modelos_disponiveis = sorted(
+                    models_list,
+                    key=lambda x: (not ("flash" in x), not ("pro" in x), x)
+                )
+        except Exception:
+            pass
+
+    modelo_escolhido = st.selectbox("Modelo:", modelos_disponiveis)
     
     st.markdown("---")
     st.markdown("### 🎯 Princípio 80/20 & Eficiência")
@@ -51,7 +71,7 @@ with col2:
 
 # Execução
 if st.button("Executar Análise Crítica com Grounding"):
-    if not api_key:
+    if not api_key.strip():
         st.error("Informe uma API Key do Google Gemini na barra lateral para processar.")
     elif not documento.strip() or not diretriz.strip():
         st.warning("Preencha tanto o documento quanto a diretriz de validação.")
@@ -59,7 +79,7 @@ if st.button("Executar Análise Crítica com Grounding"):
         with st.spinner("Processando com Grounding estrito..."):
             try:
                 start_time = time.time()
-                genai.configure(api_key=api_key)
+                genai.configure(api_key=api_key.strip())
                 model = genai.GenerativeModel(modelo_escolhido)
 
                 prompt = f"""
@@ -84,12 +104,12 @@ if st.button("Executar Análise Crítica com Grounding"):
                 response = model.generate_content(prompt)
                 tempo_execucao = round(time.time() - start_time, 2)
 
-                # Cálculo de métricas de telemetria ("Tokens são dinheiro")
+                # Telemetria ("Tokens são dinheiro")
                 tokens_entrada = int(len(prompt.split()) * 1.33)
                 tokens_saida = int(len(response.text.split()) * 1.33)
                 total_tokens = tokens_entrada + tokens_saida
 
-                # Custo aproximado com base na tabela do Gemini 1.5 Flash ($0.075 / 1M tokens)
+                # Custo aproximado do Flash ($0.075 por 1M tokens)
                 custo_estimado = (total_tokens / 1_000_000) * 0.075
 
                 st.markdown("---")
